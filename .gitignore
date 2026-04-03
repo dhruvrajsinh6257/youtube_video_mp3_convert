@@ -1,0 +1,30 @@
+# Virtual Environment (the biggest folder, must ignore!)
+venv/
+ENV/
+env/
+
+# Python cache (compiled code)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Your temporary YouTube downloads
+temp_result.mp3
+temp_result.webm
+temp_result.mp4
+downloaded_audio.mp4
+downloaded_audio.mp3
+clipped_audio.mp3
+clipped_audio.webm
+final_cut_output.mp3
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Flask/Environment secrets (if you ever use them)
+.env
+.flaskenv
+
+# Optional: Cookies (usually contains personal session data)
+# cookies.txt
