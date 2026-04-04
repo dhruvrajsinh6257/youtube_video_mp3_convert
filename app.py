@@ -7,7 +7,13 @@ from flask_socketio import SocketIO
 
 app = Flask(__name__)
 # 'gevent' allows the progress bar to update while the download happens
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode='gevent',
+    engineio_logger=True, # This helps us see errors in Render logs
+    always_connect=True
+)
 
 # This function grabs the progress from yt-dlp and sends it to the web page
 def progress_hook(d):
