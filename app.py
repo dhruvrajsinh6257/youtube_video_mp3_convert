@@ -5,15 +5,10 @@ import yt_dlp
 from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO
 
-app = Flask(__name__)
 # 'gevent' allows the progress bar to update while the download happens
-socketio = SocketIO(
-    app, 
-    cors_allowed_origins="*", 
-    async_mode='gevent',
-    engineio_logger=True, # This helps us see errors in Render logs
-    always_connect=True
-)
+app = Flask(__name__)
+# Enable logging so you can see why it's failing in the Render "Logs" tab
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', logger=True, engineio_logger=True)
 
 # This function grabs the progress from yt-dlp and sends it to the web page
 def progress_hook(d):
