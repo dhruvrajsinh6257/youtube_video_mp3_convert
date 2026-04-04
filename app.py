@@ -6,7 +6,8 @@ from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# 'gevent' allows the progress bar to update while the download happens
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 # This function grabs the progress from yt-dlp and sends it to the web page
 def progress_hook(d):
@@ -70,4 +71,6 @@ def download_file():
     return send_file(path, as_attachment=True, download_name="clip.mp3")
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000)
+    # Render provides the PORT variable automatically
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port)
