@@ -8,7 +8,7 @@ from pydub import AudioSegment
 DOWNLOAD_FOLDER = "/tmp"
 
 def download_and_convert_to_wav(url):
-    """Download audio from YouTube URL and convert to WAV"""
+    """Download audio from YouTube URL and try to convert to WAV"""
     try:
         file_id = str(uuid.uuid4())
         temp_file = os.path.join(DOWNLOAD_FOLDER, f"{file_id}")
@@ -29,18 +29,22 @@ def download_and_convert_to_wav(url):
         if not os.path.exists(downloaded_file):
             raise Exception("Audio file not found after download")
         
-        # Convert to WAV using pydub
-        audio = AudioSegment.from_file(downloaded_file)
-        wav_file = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.wav")
-        audio.export(wav_file, format="wav")
-        
-        # Clean up original
+        # Try to convert to WAV, but fall back to original if ffmpeg not available
         try:
-            os.remove(downloaded_file)
-        except:
-            pass
-        
-        return wav_file
+            audio = AudioSegment.from_file(downloaded_file)
+            wav_file = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.wav")
+            audio.export(wav_file, format="wav")
+            
+            # Clean up original
+            try:
+                os.remove(downloaded_file)
+            except:
+                pass
+            
+            return wav_file
+        except Exception as e:
+            # ffmpeg not available, return original format
+            return downloaded_file
                 
     except Exception as e:
         raise Exception(f"Download error: {str(e)}")
@@ -83,24 +87,29 @@ def handler(event, context):
                 'body': json.dumps({'error': 'Missing YouTube URL'})
             }
         
-        # Download and convert to WAV
-        wav_file = download_and_convert_to_wav(url)
+        # Download and optionally convert to WAV
+        audio_file = download_and_convert_to_wav(url)
         
-        with open(wav_file, 'rb') as f:
+        with open(audio_file, 'rb') as f:
             file_data = f.read()
         
         # Try to clean up
         try:
-            os.remove(wav_file)
+            os.remove(audio_file)
         except:
             pass
         
         import base64
         encoded_data = base64.b64encode(file_data).decode('utf-8')
         
+        # Determine file type and MIME type
+        file_ext = os.path.splitext(audio_file)[1].lower()
+        mime_type = "audio/mpeg" if file_ext in [".m4a", ".aac"] else "audio/wav"
+        download_name = f"audio{file_ext}"
+        
         response_headers = {
-            'Content-Type': 'audio/wav',
-            'Content-Disposition': 'attachment; filename="audio.wav"',
+            'Content-Type': mime_type,
+            'Content-Disposition': f'attachment; filename="{download_name}"',
             'Access-Control-Allow-Origin': '*',
         }
         

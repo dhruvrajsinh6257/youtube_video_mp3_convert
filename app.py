@@ -11,7 +11,7 @@ os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 
 def download_and_convert_to_wav(url):
-    """Download audio from YouTube URL and convert to WAV"""
+    """Download audio from YouTube URL and try to convert to WAV"""
     try:
         file_id = str(uuid.uuid4())
         temp_file = f"{DOWNLOAD_FOLDER}/{file_id}"
@@ -31,18 +31,22 @@ def download_and_convert_to_wav(url):
         if not os.path.exists(downloaded_file):
             raise Exception("Audio file not found after download")
         
-        # Convert to WAV using pydub
-        audio = AudioSegment.from_file(downloaded_file)
-        wav_file = f"{DOWNLOAD_FOLDER}/{file_id}.wav"
-        audio.export(wav_file, format="wav")
-        
-        # Clean up original
+        # Try to convert to WAV, but fall back to original if ffmpeg not available
         try:
-            os.remove(downloaded_file)
-        except:
-            pass
-        
-        return wav_file
+            audio = AudioSegment.from_file(downloaded_file)
+            wav_file = f"{DOWNLOAD_FOLDER}/{file_id}.wav"
+            audio.export(wav_file, format="wav")
+            
+            # Clean up original
+            try:
+                os.remove(downloaded_file)
+            except:
+                pass
+            
+            return wav_file
+        except Exception as e:
+            # ffmpeg not available, return original format
+            return downloaded_file
                 
     except Exception as e:
         raise Exception(f"Download error: {str(e)}")
@@ -64,11 +68,16 @@ def download():
         if not url:
             return jsonify({"error": "Missing YouTube URL"}), 400
         
-        # Download and convert to WAV
-        wav_file = download_and_convert_to_wav(url)
+        # Download and optionally convert to WAV
+        audio_file = download_and_convert_to_wav(url)
+        
+        # Determine file type
+        file_ext = os.path.splitext(audio_file)[1].lower()
+        mime_type = "audio/mpeg" if file_ext in [".m4a", ".aac"] else "audio/wav"
+        download_name = f"audio{file_ext}"
         
         # Send file
-        return send_file(wav_file, as_attachment=True, download_name="audio.wav", mimetype="audio/wav")
+        return send_file(audio_file, as_attachment=True, download_name=download_name, mimetype=mime_type)
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
