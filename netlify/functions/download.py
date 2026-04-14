@@ -19,6 +19,7 @@ def download_and_convert_to_wav(url):
             'quiet': True,
             'noplaylist': True,
             'no_warnings': True,
+            '_js_runtimes': ['node'],
         }
         
         # Download audio

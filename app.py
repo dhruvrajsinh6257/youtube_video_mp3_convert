@@ -21,6 +21,7 @@ def download_and_convert_to_wav(url):
             'outtmpl': temp_file,
             'quiet': True,
             'noplaylist': True,
+            '_js_runtimes': ['node'],
         }
         
         # Download audio
