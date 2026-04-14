@@ -11,15 +11,15 @@
     <h1>🎧 YouTube Audio Cutter</h1>
     <p>Fast • Clean • High Quality</p>
 
-    <div id="error" style="color: red; margin-bottom: 10px; display: none;"></div>
-    <div id="loading" style="color: green; margin-bottom: 10px; display: none;">⏳ Processing... Please wait</div>
+    <div id="error" style="color: red; margin-bottom: 10px; display: none; padding: 10px; background: #ffe0e0; border-radius: 5px;"></div>
+    <div id="loading" style="color: green; margin-bottom: 10px; display: none; padding: 10px; background: #e0ffe0; border-radius: 5px;">⏳ Processing... Please wait</div>
 
     <form id="downloadForm" onsubmit="handleSubmit(event)">
         <input type="text" id="url" name="url" placeholder="Enter YouTube URL" required>
 
         <div class="time-inputs">
-            <input type="text" id="start" name="start" placeholder="Start (HH:MM:SS)" required>
-            <input type="text" id="end" name="end" placeholder="End (HH:MM:SS)" required>
+            <input type="text" id="start" name="start" placeholder="Start (MM:SS or HH:MM:SS)" required>
+            <input type="text" id="end" name="end" placeholder="End (MM:SS or HH:MM:SS)" required>
         </div>
 
         <button type="submit" id="submitBtn">⚡ Generate MP3</button>
@@ -27,6 +27,78 @@
 </div>
 
 <script>
+function timeToSeconds(timeStr) {
+    const parts = timeStr.split(':').reverse();
+    let seconds = 0;
+    for (let i = 0; i < parts.length; i++) {
+        seconds += parseInt(parts[i]) * Math.pow(60, i);
+    }
+    return seconds;
+}
+
+async function cutAudio(audioBuffer, startTime, endTime, sampleRate) {
+    const startSample = Math.floor(startTime * sampleRate);
+    const endSample = Math.floor(endTime * sampleRate);
+    const length = endSample - startSample;
+    
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const cutBuffer = audioContext.createBuffer(audioBuffer.numberOfChannels, length, sampleRate);
+    
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+        const sourceData = audioBuffer.getChannelData(channel);
+        const cutData = cutBuffer.getChannelData(channel);
+        cutData.set(sourceData.subarray(startSample, endSample));
+    }
+    return cutBuffer;
+}
+
+function encodeWAV(audioBuffer) {
+    const sampleRate = audioBuffer.sampleRate;
+    const numberOfChannels = audioBuffer.numberOfChannels;
+    const length = audioBuffer.length;
+    
+    const channelData = [];
+    for (let i = 0; i < numberOfChannels; i++) {
+        channelData.push(audioBuffer.getChannelData(i));
+    }
+    
+    let offset = 0;
+    const buffer = new ArrayBuffer(44 + length * numberOfChannels * 2);
+    const view = new DataView(buffer);
+    
+    // WAV header
+    const writeString = (offset, string) => {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * numberOfChannels * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numberOfChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numberOfChannels * 2, true);
+    view.setUint16(32, numberOfChannels * 2, true);
+    view.setUint16(34, 16, true); // bits per sample
+    writeString(36, 'data');
+    view.setUint32(40, length * numberOfChannels * 2, true);
+    
+    offset = 44;
+    for (let i = 0; i < length; i++) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+            const sample = Math.max(-1, Math.min(1, channelData[channel][i]));
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+            offset += 2;
+        }
+    }
+    
+    return buffer;
+}
+
 async function handleSubmit(event) {
     event.preventDefault();
     
@@ -34,15 +106,28 @@ async function handleSubmit(event) {
     const loadingDiv = document.getElementById('loading');
     const submitBtn = document.getElementById('submitBtn');
     
-    // Reset messages
     errorDiv.style.display = 'none';
     errorDiv.textContent = '';
     loadingDiv.style.display = 'block';
     submitBtn.disabled = true;
     
-    const formData = new FormData(document.getElementById('downloadForm'));
+    const url = document.getElementById('url').value;
+    const startTime = timeToSeconds(document.getElementById('start').value);
+    const endTime = timeToSeconds(document.getElementById('end').value);
+    
+    if (startTime >= endTime) {
+        errorDiv.textContent = '❌ End time must be after start time';
+        errorDiv.style.display = 'block';
+        loadingDiv.style.display = 'none';
+        submitBtn.disabled = false;
+        return;
+    }
     
     try {
+        // Step 1: Download audio from backend
+        const formData = new FormData();
+        formData.append('url', url);
+        
         const response = await fetch('/api/download', {
             method: 'POST',
             body: formData
@@ -50,21 +135,36 @@ async function handleSubmit(event) {
         
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Error ${response.status}: ${errorText}`);
+            throw new Error(`Download failed: ${errorText}`);
         }
         
-        // Download the file
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+        // Step 2: Decode audio
+        const arrayBuffer = await response.arrayBuffer();
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Step 3: Cut audio
+        const cutBuffer = await cutAudio(audioBuffer, startTime, endTime, audioBuffer.sampleRate);
+        
+        // Step 4: Encode to WAV
+        const wavBuffer = encodeWAV(cutBuffer);
+        
+        // Step 5: Download
+        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = 'cut_audio.mp3';
+        a.href = downloadUrl;
+        a.download = 'cut_audio.wav';
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
+        window.URL.revokeObjectURL(downloadUrl);
         a.remove();
         
         loadingDiv.style.display = 'none';
+        errorDiv.textContent = '✅ Audio downloaded successfully!';
+        errorDiv.style.color = 'green';
+        errorDiv.style.display = 'block';
+        
     } catch (error) {
         console.error('Error:', error);
         errorDiv.textContent = '❌ ' + error.message;
