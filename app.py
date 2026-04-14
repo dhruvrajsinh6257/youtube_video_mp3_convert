@@ -1,77 +1,63 @@
-import os
-import tempfile
-import shutil
-import yt_dlp
 from flask import Flask, render_template, request, send_file
-from flask_socketio import SocketIO
+import yt_dlp
+import subprocess
+import os
+import uuid
 
-# 'gevent' allows the progress bar to update while the download happens
 app = Flask(__name__)
-# Enable logging so you can see why it's failing in the Render "Logs" tab
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', logger=True, engineio_logger=True)
 
-# This function grabs the progress from yt-dlp and sends it to the web page
-def progress_hook(d):
-    if d['status'] == 'downloading':
-        # Clean the percentage string (e.g., '45.2%' -> '45.2')
-        p = d.get('_percent_str', '0%').replace('%', '').strip()
-        socketio.emit('progress_update', {'percent': p})
-    elif d['status'] == 'finished':
-        socketio.emit('progress_update', {'percent': '100'})
+DOWNLOAD_FOLDER = "downloads"
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-@socketio.on('start_process')
-def handle_process(data):
-    video_url = data.get('url')
-    start_t = data.get('start_time')
-    end_t = data.get('end_time')
-
-    temp_dir = tempfile.mkdtemp()
-    base_name = "clipped_audio"
-    output_path_mp3 = os.path.join(temp_dir, f"{base_name}.mp3")
+def download_audio_segment(url, start_time, end_time):
+    file_id = str(uuid.uuid4())
+    temp_file = f"{DOWNLOAD_FOLDER}/{file_id}.%(ext)s"
+    output_file = f"{DOWNLOAD_FOLDER}/{file_id}.mp3"
 
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'worstaudio',  # fast download
+        'outtmpl': temp_file,
+        'quiet': True,
         'noplaylist': True,
-        'progress_hooks': [progress_hook],
-        'external_downloader': 'ffmpeg',
-        'external_downloader_args': {
-            'ffmpeg_i': ['-ss', start_t, '-to', end_t, '-loglevel', 'error']
-        },
-        'extractor_args': {
-            'youtube': {
-                'js_runtimes': 'node',
-                'player_client': ['android', 'web']
-            }
-        },
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'outtmpl': os.path.join(temp_dir, f'{base_name}.%(ext)s'),
-        'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
     }
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-        
-        # Trigger the download on the user's browser
-        socketio.emit('processing_finished', {'file_url': f'/download_file?path={output_path_mp3}'})
-    except Exception as e:
-        socketio.emit('error', {'msg': str(e)})
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        downloaded_file = ydl.prepare_filename(info)
 
-@app.route('/download_file')
-def download_file():
-    path = request.args.get('path')
-    # Use after_this_request or similar logic if you want to delete temp_dir immediately
-    return send_file(path, as_attachment=True, download_name="clip.mp3")
+    # Cut using ffmpeg
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i", downloaded_file,
+        "-ss", start_time,
+        "-to", end_time,
+        "-vn",
+        "-acodec", "libmp3lame",
+        "-ab", "128k",
+        output_file
+    ]
 
-if __name__ == '__main__':
-    # Render provides the PORT variable automatically
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port)
+    subprocess.run(command, check=True)
+
+    os.remove(downloaded_file)
+
+    return output_file
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        url = request.form["url"]
+        start = request.form["start"]
+        end = request.form["end"]
+
+        output_file = download_audio_segment(url, start, end)
+        return send_file(output_file, as_attachment=True)
+
+    return render_template("index.html")
+
+
+if __name__ == "__main__":
+    app.run(debug=True)

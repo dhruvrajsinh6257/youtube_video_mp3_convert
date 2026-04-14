@@ -1,51 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>YouTube Audio Segment</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; background: #f0f0f0; }
-        .box { background: white; padding: 40px; border-radius: 10px; width: 400px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
-        button { width: 100%; background: red; color: white; padding: 15px; border: none; font-weight: bold; cursor: pointer; }
-        .progress-container { width: 100%; background: #ddd; height: 20px; margin-top: 20px; display: none; }
-        #bar { width: 0%; height: 100%; background: red; transition: width 0.3s; }
-    </style>
+    <meta charset="UTF-8">
+    <title>YouTube Audio Cutter</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="box">
-        <h2>YouTube to Audio</h2>
-        <input type="text" id="url" placeholder="YouTube URL">
-        <input type="text" id="start" placeholder="Start (HH:MM:SS)">
-        <input type="text" id="end" placeholder="End (HH:MM:SS)">
-        <button onclick="run()">Download & Convert</button>
 
-        <div class="progress-container" id="p-box"><div id="bar"></div></div>
-        <p id="stat"></p>
-    </div>
+<div class="container">
+    <h1>🎧 YouTube Audio Cutter</h1>
+    <p>Fast • Clean • High Quality</p>
 
-    <script>
-        const socket = io({
-        transports: ["websocket", "polling"],
-        upgrade: true
-});
-        function run() {
-            socket.emit('start_process', {
-                url: document.getElementById('url').value,
-                start_time: document.getElementById('start').value,
-                end_time: document.getElementById('end').value
-            });
-            document.getElementById('p-box').style.display = 'block';
-            document.getElementById('stat').innerText = "Locating segment...";
-        }
-        socket.on('progress_update', d => {
-            document.getElementById('bar').style.width = d.percent + '%';
-            document.getElementById('stat').innerText = "Downloading: " + d.percent + "%";
-        });
-        socket.on('processing_finished', d => {
-            window.location.href = d.file_url;
-            document.getElementById('stat').innerText = "Finished!";
-        });
-    </script>
+    <form method="POST">
+        <input type="text" name="url" placeholder="Enter YouTube URL" required>
+
+        <div class="time-inputs">
+            <input type="text" name="start" placeholder="Start (HH:MM:SS)" required>
+            <input type="text" name="end" placeholder="End (HH:MM:SS)" required>
+        </div>
+
+        <button type="submit">⚡ Generate MP3</button>
+    </form>
+</div>
+
 </body>
 </html>

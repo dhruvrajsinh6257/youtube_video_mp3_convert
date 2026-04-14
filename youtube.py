@@ -1,81 +1,58 @@
 import yt_dlp
+import subprocess
 import os
 
-def download_and_cut_audio():
-    print("\n" + "="*45)
-    print("--- High-Efficiency YouTube Audio Cutter ---")
-    print("="*45)
-    
-    # 1. User Inputs
-    url = input("\nEnter the YouTube URL: ").strip()
-    if not url:
-        print("❌ Error: URL cannot be empty.")
-        return
+def download_audio_segment_fast(url, start_time, end_time):
+    temp_file = "temp_audio.%(ext)s"
+    output_file = "output.mp3"
 
-    print("\nNote: For long videos, use HH:MM:SS (e.g., 01:10:20)")
-    start_t = input("Enter Start Time: ").strip()
-    end_t = input("Enter End Time: ").strip()
-    
-    output_final = "final_cut_output.mp3"
-
-    # 2. Configure yt-dlp
     ydl_opts = {
-        # 'bestaudio' keeps the file size small and download fast
-        'format': 'bestaudio/best',
+        # 🔥 Get LOW SIZE audio (fast)
+        'format': 'worstaudio',  
+        'outtmpl': temp_file,
+        'quiet': False,
         'noplaylist': True,
-        
-        # FIX: JavaScript Runtime & Client issues
-        'extractor_args': {
-            'youtube': {
-                'js_runtimes': 'node',  # Uses your installed Node.js
-                'player_client': ['android', 'web']
-            }
-        },
-
-        # FIX: "Read operation timed out" for 4-hour videos
-        # We tell ffmpeg to ONLY download the segment we want.
-        'external_downloader': 'ffmpeg',
-        'external_downloader_args': {
-            'ffmpeg_i': [
-                '-ss', start_t, 
-                '-to', end_t,
-                '-loglevel', 'error'  # Keeps the console clean
-            ]
-        },
-
-        # Conversion to MP3
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        
-        'outtmpl': 'temp_result.%(ext)s',
-        
-        # Optional: Cookies help avoid 403 Forbidden/Sign-in errors
-        'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
     }
 
     try:
-        print(f"\n[Step 1/2] Fetching segment: {start_t} to {end_t}...")
+        print("\n⚡ Downloading LOW-SIZE audio (fast)...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        
-        # [Step 2/2] Finalizing file name
-        # yt-dlp's ExtractAudio postprocessor will turn temp_result.webm/mp4 into temp_result.mp3
-        if os.path.exists("temp_result.mp3"):
-            if os.path.exists(output_final):
-                os.remove(output_final)
-            os.rename("temp_result.mp3", output_final)
-            print(f"\n✅ Success! File saved as: {output_final}")
-        else:
-            print("\n❌ Error: The MP3 file was not generated correctly.")
-        
+            info = ydl.extract_info(url, download=True)
+            downloaded_file = ydl.prepare_filename(info)
+
+        print(f"✅ Downloaded: {downloaded_file}")
+
+        print("\n✂️ Cutting and converting to MP3...")
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i", downloaded_file,
+            "-ss", start_time,
+            "-to", end_time,
+            "-vn",
+            "-acodec", "libmp3lame",
+            "-ab", "128k",   # lower bitrate = faster + smaller
+            output_file
+        ]
+
+        subprocess.run(command, check=True)
+
+        print(f"\n🎉 Done! Saved as: {output_file}")
+
+        os.remove(downloaded_file)
+
     except Exception as e:
-        print(f"\n❌ An error occurred: {e}")
-        print("\nTIP: If you get a '403 Forbidden' error, ensure you have a 'cookies.txt' in this folder.")
+        print("\n❌ Error:", str(e))
+
 
 if __name__ == "__main__":
-    # Ensure Node.js is recognized
-    # If this script still shows the JS warning, try restarting VS Code.
-    download_and_cut_audio()
+    print("\n--- ⚡ FAST YouTube Audio Cutter ---\n")
+
+    url = input("Enter the YouTube URL: ").strip()
+
+    print("\nNote: Use HH:MM:SS format (e.g., 01:15:30)")
+    start_time = input("Enter Start Time: ").strip()
+    end_time = input("Enter End Time: ").strip()
+
+    download_audio_segment_fast(url, start_time, end_time)
