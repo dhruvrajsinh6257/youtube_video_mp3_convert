@@ -141,7 +141,22 @@ async function handleSubmit(event) {
         // Step 2: Decode audio
         const arrayBuffer = await response.arrayBuffer();
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Add timeout for decoding
+        let audioBuffer;
+        try {
+            audioBuffer = await Promise.race([
+                audioContext.decodeAudioData(arrayBuffer),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Audio decode timeout - format may not be supported by Web Audio API')), 30000)
+                )
+            ]);
+        } catch (decodeError) {
+            console.error('Decode error:', decodeError);
+            console.log('ArrayBuffer size:', arrayBuffer.byteLength);
+            console.log('First bytes:', new Uint8Array(arrayBuffer.slice(0, 20)));
+            throw new Error(`Cannot decode audio: ${decodeError.message} (Try a different video or check console for details)`);
+        }
         
         // Step 3: Cut audio
         const cutBuffer = await cutAudio(audioBuffer, startTime, endTime, audioBuffer.sampleRate);
