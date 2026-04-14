@@ -3,11 +3,12 @@ import os
 import uuid
 import json
 from urllib.parse import parse_qs
+from pydub import AudioSegment
 
 DOWNLOAD_FOLDER = "/tmp"
 
-def download_audio(url):
-    """Download audio from YouTube URL - returns raw audio file"""
+def download_and_convert_to_wav(url):
+    """Download audio from YouTube URL and convert to WAV"""
     try:
         file_id = str(uuid.uuid4())
         temp_file = os.path.join(DOWNLOAD_FOLDER, f"{file_id}")
@@ -20,14 +21,26 @@ def download_audio(url):
             'no_warnings': True,
         }
         
+        # Download audio
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
-            
-            if os.path.exists(downloaded_file):
-                return downloaded_file
-            else:
-                raise Exception("Audio file not found after download")
+        
+        if not os.path.exists(downloaded_file):
+            raise Exception("Audio file not found after download")
+        
+        # Convert to WAV using pydub
+        audio = AudioSegment.from_file(downloaded_file)
+        wav_file = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.wav")
+        audio.export(wav_file, format="wav")
+        
+        # Clean up original
+        try:
+            os.remove(downloaded_file)
+        except:
+            pass
+        
+        return wav_file
                 
     except Exception as e:
         raise Exception(f"Download error: {str(e)}")
@@ -70,15 +83,15 @@ def handler(event, context):
                 'body': json.dumps({'error': 'Missing YouTube URL'})
             }
         
-        # Download audio
-        audio_file = download_audio(url)
+        # Download and convert to WAV
+        wav_file = download_and_convert_to_wav(url)
         
-        with open(audio_file, 'rb') as f:
+        with open(wav_file, 'rb') as f:
             file_data = f.read()
         
         # Try to clean up
         try:
-            os.remove(audio_file)
+            os.remove(wav_file)
         except:
             pass
         
@@ -86,8 +99,8 @@ def handler(event, context):
         encoded_data = base64.b64encode(file_data).decode('utf-8')
         
         response_headers = {
-            'Content-Type': 'audio/mpeg',
-            'Content-Disposition': 'attachment; filename="audio.m4a"',
+            'Content-Type': 'audio/wav',
+            'Content-Disposition': 'attachment; filename="audio.wav"',
             'Access-Control-Allow-Origin': '*',
         }
         
