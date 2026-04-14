@@ -7,6 +7,7 @@
 
 [functions]
   directory = "netlify/functions"
+  external_node_modules = ["yt-dlp"]
 
 [functions."download"]
   runtime = "python3.9"
@@ -14,4 +15,9 @@
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
   status = 200
