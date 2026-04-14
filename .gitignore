@@ -28,3 +28,5 @@ Thumbs.db
 
 # Optional: Cookies (usually contains personal session data)
 # cookies.txt
+# Local Netlify folder
+.netlify

@@ -1,9 +1,14 @@
 [build]
   publish = "."
-  functions = "netlify/functions"
 
 [build.environment]
   PYTHON_VERSION = "3.9"
+
+[functions]
+  directory = "netlify/functions"
+
+[functions."download"]
+  runtime = "python3.9"
 
 [[redirects]]
   from = "/api/*"
