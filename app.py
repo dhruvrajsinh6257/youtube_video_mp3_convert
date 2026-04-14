@@ -1,8 +1,8 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 import yt_dlp
-import subprocess
 import os
 import uuid
+from functools import wraps
 
 app = Flask(__name__)
 
@@ -10,53 +10,56 @@ DOWNLOAD_FOLDER = "downloads"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 
-def download_audio_segment(url, start_time, end_time):
-    file_id = str(uuid.uuid4())
-    temp_file = f"{DOWNLOAD_FOLDER}/{file_id}.%(ext)s"
-    output_file = f"{DOWNLOAD_FOLDER}/{file_id}.mp3"
-
-    ydl_opts = {
-        'format': 'worstaudio',  # fast download
-        'outtmpl': temp_file,
-        'quiet': True,
-        'noplaylist': True,
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        downloaded_file = ydl.prepare_filename(info)
-
-    # Cut using ffmpeg
-    command = [
-        "ffmpeg",
-        "-y",
-        "-i", downloaded_file,
-        "-ss", start_time,
-        "-to", end_time,
-        "-vn",
-        "-acodec", "libmp3lame",
-        "-ab", "128k",
-        output_file
-    ]
-
-    subprocess.run(command, check=True)
-
-    os.remove(downloaded_file)
-
-    return output_file
+def download_audio(url):
+    """Download audio from YouTube URL"""
+    try:
+        file_id = str(uuid.uuid4())
+        temp_file = f"{DOWNLOAD_FOLDER}/{file_id}"
+        
+        ydl_opts = {
+            'format': 'worstaudio/best',
+            'outtmpl': temp_file,
+            'quiet': True,
+            'noplaylist': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            downloaded_file = ydl.prepare_filename(info)
+            
+            if os.path.exists(downloaded_file):
+                return downloaded_file
+            else:
+                raise Exception("Audio file not found after download")
+                
+    except Exception as e:
+        raise Exception(f"Download error: {str(e)}")
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET"])
 def index():
-    if request.method == "POST":
-        url = request.form["url"]
-        start = request.form["start"]
-        end = request.form["end"]
-
-        output_file = download_audio_segment(url, start, end)
-        return send_file(output_file, as_attachment=True)
-
     return render_template("index.html")
+
+
+@app.route("/api/download", methods=["POST", "OPTIONS"])
+def download():
+    if request.method == "OPTIONS":
+        return "", 200
+    
+    try:
+        url = request.form.get("url")
+        
+        if not url:
+            return jsonify({"error": "Missing YouTube URL"}), 400
+        
+        # Download audio
+        audio_file = download_audio(url)
+        
+        # Send file
+        return send_file(audio_file, as_attachment=True, download_name="audio.m4a")
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
