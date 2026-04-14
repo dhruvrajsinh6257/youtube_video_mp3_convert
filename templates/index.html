@@ -11,17 +11,70 @@
     <h1>🎧 YouTube Audio Cutter</h1>
     <p>Fast • Clean • High Quality</p>
 
-    <form method="POST" action="/api/download">
-        <input type="text" name="url" placeholder="Enter YouTube URL" required>
+    <div id="error" style="color: red; margin-bottom: 10px; display: none;"></div>
+    <div id="loading" style="color: green; margin-bottom: 10px; display: none;">⏳ Processing... Please wait</div>
+
+    <form id="downloadForm" onsubmit="handleSubmit(event)">
+        <input type="text" id="url" name="url" placeholder="Enter YouTube URL" required>
 
         <div class="time-inputs">
-            <input type="text" name="start" placeholder="Start (HH:MM:SS)" required>
-            <input type="text" name="end" placeholder="End (HH:MM:SS)" required>
+            <input type="text" id="start" name="start" placeholder="Start (HH:MM:SS)" required>
+            <input type="text" id="end" name="end" placeholder="End (HH:MM:SS)" required>
         </div>
 
-        <button type="submit">⚡ Generate MP3</button>
+        <button type="submit" id="submitBtn">⚡ Generate MP3</button>
     </form>
 </div>
+
+<script>
+async function handleSubmit(event) {
+    event.preventDefault();
+    
+    const errorDiv = document.getElementById('error');
+    const loadingDiv = document.getElementById('loading');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Reset messages
+    errorDiv.style.display = 'none';
+    errorDiv.textContent = '';
+    loadingDiv.style.display = 'block';
+    submitBtn.disabled = true;
+    
+    const formData = new FormData(document.getElementById('downloadForm'));
+    
+    try {
+        const response = await fetch('/api/download', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error ${response.status}: ${errorText}`);
+        }
+        
+        // Download the file
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'cut_audio.mp3';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        
+        loadingDiv.style.display = 'none';
+    } catch (error) {
+        console.error('Error:', error);
+        errorDiv.textContent = '❌ ' + error.message;
+        errorDiv.style.display = 'block';
+        loadingDiv.style.display = 'none';
+    } finally {
+        submitBtn.disabled = false;
+    }
+}
+</script>
 
 </body>
 </html>
